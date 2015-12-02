@@ -10,6 +10,7 @@
 #include <mwm/world_model.h>
 #include <mwm/rendering.h>
 #include <mwm/projection_matrix.h>
+#include <mwm/visualization/viewer.h>
 
 #include "timer.h"
 
@@ -32,7 +33,9 @@ void update(mwm::WorldModel& wm, const cv::Mat& depth_image, const geo::Pose3D& 
             if (d != d || d == 0)
                 continue;
 
-            vertex_map.at<int>(y / step, x / step) = wm.addVertex(P.project2Dto3D(x, y) * d);
+            geo::Vec3 p = P.project2Dto3D(x, y) * d;
+
+            vertex_map.at<int>(y / step, x / step) = wm.addVertex(sensor_pose * p);
         }
     }
 
@@ -63,6 +66,8 @@ int main(int argc, char **argv)
     mwm::ImageBuffer image_buffer;
     image_buffer.initialize("/amigo/top_kinect/rgbd");
 
+    mwm::Viewer viewer("world model", 640, 480);
+
     while(ros::ok())
     {
         geo::Pose3D sensor_pose;
@@ -89,15 +94,16 @@ int main(int argc, char **argv)
         update(wm, depth_image, sensor_pose, P);
         std::cout << "Update took " << timer.getElapsedTimeInMilliSec() << " ms" << std::endl;
 
-
         std::cout << "Num vertices: " << wm.vertices().size() << std::endl;
         std::cout << "Num triangles: " << wm.triangles().size() << std::endl;
 
         cv::Mat rendered_depth_image(depth_image.rows, depth_image.cols, CV_32FC1, 0.0);
 
         timer.reset();
-        mwm::render::renderDepth(wm, P, geo::Pose3D::identity(), rendered_depth_image);
+        mwm::render::renderDepth(wm, P, sensor_pose, rendered_depth_image);
         std::cout << "Rendering took " << timer.getElapsedTimeInMilliSec() << " ms" << std::endl;
+
+        viewer.tick(wm);
 
 
         cv::imshow("depth", depth_image / 10);

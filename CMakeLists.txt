@@ -64,10 +64,12 @@ add_library(mwm
     include/mwm/projection_matrix.h
     include/mwm/rendering.h
     include/mwm/triangle.h
+    include/mwm/visualization/viewer.h
 
     src/world_model.cpp
     src/projection_matrix.cpp
     src/rendering.cpp
+    src/visualization/viewer.cpp
 )
 target_link_libraries(mwm ${catkin_LIBRARIES})
 
