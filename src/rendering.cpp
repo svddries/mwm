@@ -42,10 +42,10 @@ void sort(const geo::Vec3f& p1, const geo::Vec3f& p2, const geo::Vec3f& p3, int 
 void drawTrianglePart(int y_start, int y_end,
                       float x_start, float x_start_delta, float x_end, float x_end_delta,
                       float d_start, float d_start_delta, float d_end, float d_end_delta,
-                      cv::Mat& depth_image)
+                      Result& res)
 {
 
-    //    cv::Mat& image = res.image_;
+    cv::Mat& depth_image = res.z_buffer;
 
     if (y_start < 0)
     {
@@ -75,10 +75,11 @@ void drawTrianglePart(int y_start, int y_end,
         for(int x = x_start2; x <= x_end2; ++x)
         {
             float depth = 1.0f / d;
+            res.renderPixel(x, y, depth);
 
-            float& di = depth_image.at<float>(y, x);
-            if (di == 0 || depth < di)
-                di = depth;
+//            float& di = depth_image.at<float>(y, x);
+//            if (di == 0 || depth < di)
+//                di = depth;
             d += d_delta;
         }
 
@@ -91,9 +92,10 @@ void drawTrianglePart(int y_start, int y_end,
 
 // -------------------------------------------------------------------------------
 
-void drawTriangle2D(const geo::Vec3f& p1, const geo::Vec3f& p2, const geo::Vec3f& p3, cv::Mat& depth)
+void drawTriangle2D(const geo::Vec3f& p1, const geo::Vec3f& p2, const geo::Vec3f& p3, Result& res)
 {
     bool back_face_culling = true;
+    const cv::Mat& depth = res.z_buffer;
 
     if (back_face_culling && (p2.x - p1.x) * (p3.y - p1.y) - (p3.x - p1.x) * (p2.y - p1.y) >= 0)
         return;
@@ -114,7 +116,7 @@ void drawTriangle2D(const geo::Vec3f& p1, const geo::Vec3f& p2, const geo::Vec3f
         drawTrianglePart(p_min->y, p_mid->y,
                          p_min->x, 0, p_max->x, 0,
                          p_min->z, 0, p_max->z, 0,
-                         depth);
+                         res);
     }
     else
     {
@@ -140,19 +142,19 @@ void drawTriangle2D(const geo::Vec3f& p1, const geo::Vec3f& p2, const geo::Vec3f
         drawTrianglePart(p_min->y, p_mid->y,
                          p_min->x, (p_a.x - p_min->x) / y_min_mid, p_min->x, (p_b.x - p_min->x) / y_min_mid,
                          p_min->z, (p_a.z - p_min->z) / y_min_mid, p_min->z, (p_b.z - p_min->z) / y_min_mid,
-                         depth);
+                         res);
 
         drawTrianglePart(p_mid->y, p_max->y,
                          p_a.x, (p_max->x - p_a.x) / y_mid_max, p_b.x, (p_max->x - p_b.x) / y_mid_max,
                          p_a.z, (p_max->z - p_a.z) / y_mid_max, p_b.z, (p_max->z - p_b.z) / y_mid_max,
-                         depth);
+                         res);
 
     }
 }
 
 // -------------------------------------------------------------------------------
 
-void drawTriangle(const geo::Vec3& p1_3d, const geo::Vec3& p2_3d, const geo::Vec3& p3_3d, const ProjectionMatrix& P, cv::Mat& depth)
+void drawTriangle(const geo::Vec3& p1_3d, const geo::Vec3& p2_3d, const geo::Vec3& p3_3d, const ProjectionMatrix& P, Result& res)
 {
     geo::Vec2i p1_2d = P.project3Dto2D(p1_3d);
     geo::Vec2i p2_2d = P.project3Dto2D(p2_3d);
@@ -161,12 +163,12 @@ void drawTriangle(const geo::Vec3& p1_3d, const geo::Vec3& p2_3d, const geo::Vec
     drawTriangle2D(geo::Vec3f(p1_2d.x, p1_2d.y, 1.0f / -p1_3d.z),
                    geo::Vec3f(p2_2d.x, p2_2d.y, 1.0f / -p2_3d.z),
                    geo::Vec3f(p3_2d.x, p3_2d.y, 1.0f / -p3_3d.z),
-                   depth);
+                   res);
 }
 
 // ----------------------------------------------------------------------------------------------------
 
-void renderDepth(const WorldModel& wm, const ProjectionMatrix& P, const geo::Pose3D& sensor_pose, cv::Mat& depth)
+void renderDepth(const WorldModel& wm, const ProjectionMatrix& P, const geo::Pose3D& sensor_pose, Result& res)
 {
     // Parameters
     double near_clip_z = -0.1;
@@ -193,6 +195,8 @@ void renderDepth(const WorldModel& wm, const ProjectionMatrix& P, const geo::Pos
         const geo::Vec3& p1_3d = vertices_t[t.i1];
         const geo::Vec3& p2_3d = vertices_t[t.i2];
         const geo::Vec3& p3_3d = vertices_t[t.i3];
+
+        res.triangleHook(p1_3d, p2_3d, p3_3d);
 
         int n_verts_in = 0;
         bool v1_in = false;
@@ -236,7 +240,7 @@ void renderDepth(const WorldModel& wm, const ProjectionMatrix& P, const geo::Pos
 
             geo::Vec3 new3(vIn[0]->x + v02.x * t2, vIn[0]->y + v02.y * t2, near_clip_z);
 
-            drawTriangle(*vIn[0], new2, new3, P, depth);
+            drawTriangle(*vIn[0], new2, new3, P, res);
         }
         else if (n_verts_in == 2)
         {
@@ -259,9 +263,9 @@ void renderDepth(const WorldModel& wm, const ProjectionMatrix& P, const geo::Pos
 
             geo::Vec3 new3((*vIn[1]).x + v02.x * t2, (*vIn[1]).y + v02.y * t2, near_clip_z);
 
-            drawTriangle(*vIn[0], *vIn[1], new2, P, depth);
+            drawTriangle(*vIn[0], *vIn[1], new2, P, res);
 
-            drawTriangle(new2, *vIn[1], new3, P, depth);
+            drawTriangle(new2, *vIn[1], new3, P, res);
 
         }
         else if (n_verts_in == 3)
@@ -273,7 +277,7 @@ void renderDepth(const WorldModel& wm, const ProjectionMatrix& P, const geo::Pos
             drawTriangle2D(geo::Vec3f(p1_2d.x, p1_2d.y, 1.0f / -p1_3d.z),
                            geo::Vec3f(p2_2d.x, p2_2d.y, 1.0f / -p2_3d.z),
                            geo::Vec3f(p3_2d.x, p3_2d.y, 1.0f / -p3_3d.z),
-                           depth);
+                           res);
         }
     }
 }

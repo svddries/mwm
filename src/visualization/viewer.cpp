@@ -9,6 +9,43 @@
 namespace mwm
 {
 
+class LightingRenderer : public render::Result
+{
+
+// ----------------------------------------------------------------------------------------------------
+
+public:
+
+    LightingRenderer(cv::Mat& z_buffer, cv::Mat& canvas, const geo::Pose3D& sensor_pose)
+        : render::Result(z_buffer), canvas_(canvas), sensor_pose_(sensor_pose) {}
+
+    void triangleHook(const geo::Vec3& p1, const geo::Vec3& p2, const geo::Vec3& p3)
+    {
+        geo::Vec3 n = ((p3 - p1).cross(p2 - p1)).normalized();
+        n = sensor_pose_.R * n;
+        double v = (1 + n.dot(geo::Vec3(0, 0.3, -1).normalized())) / 2;
+        color_ = v * cv::Vec3b(255, 255, 255);
+    }
+
+    void renderPixel(int x, int y, float depth)
+    {
+        float& d = z_buffer.at<float>(y, x);
+        if (d == 0 || depth < d)
+        {
+            d = depth;
+            canvas_.at<cv::Vec3b>(y, x) = color_;
+        }
+    }
+
+private:
+
+    cv::Vec3b color_;
+    cv::Mat& canvas_;
+    geo::Pose3D sensor_pose_;
+};
+
+// ----------------------------------------------------------------------------------------------------
+
 void CallBackFunc(int event, int x, int y, int flags, void* userdata)
 {
     CamControlData* data = static_cast<CamControlData*>(userdata);
@@ -125,18 +162,21 @@ void Viewer::render(const WorldModel& wm)
 
     // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
+    canvas_.setTo(cv::Vec3b(20, 20, 20));
     cv::Mat depth_image(canvas_.rows, canvas_.cols, CV_32FC1, 0.0);
-    mwm::render::renderDepth(wm, P_, cam_control_.cam_pose, depth_image);
 
-    unsigned int size = canvas_.rows * canvas_.cols;
-    for(unsigned int i = 0; i < size; ++i)
-    {
-        float d = depth_image.at<float>(i);
-        if (d == 0)
-            canvas_.at<cv::Vec3b>(i) = cv::Vec3b(20, 20, 20);
-        else
-            canvas_.at<cv::Vec3b>(i) = (d / 10) * cv::Vec3b(255, 255, 255);
-    }
+    LightingRenderer res(depth_image, canvas_, cam_control_.cam_pose);
+    mwm::render::renderDepth(wm, P_, cam_control_.cam_pose, res);
+
+//    unsigned int size = canvas_.rows * canvas_.cols;
+//    for(unsigned int i = 0; i < size; ++i)
+//    {
+//        float d = depth_image.at<float>(i);
+//        if (d == 0)
+//            canvas_.at<cv::Vec3b>(i) = cv::Vec3b(20, 20, 20);
+//        else
+//            canvas_.at<cv::Vec3b>(i) = (d / 10) * cv::Vec3b(255, 255, 255);
+//    }
 }
 
 // ----------------------------------------------------------------------------------------------------

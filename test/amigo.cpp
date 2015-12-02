@@ -100,7 +100,8 @@ int main(int argc, char **argv)
         cv::Mat rendered_depth_image(depth_image.rows, depth_image.cols, CV_32FC1, 0.0);
 
         timer.reset();
-        mwm::render::renderDepth(wm, P, sensor_pose, rendered_depth_image);
+        mwm::render::Result res(rendered_depth_image);
+        mwm::render::renderDepth(wm, P, sensor_pose, res);
         std::cout << "Rendering took " << timer.getElapsedTimeInMilliSec() << " ms" << std::endl;
 
         viewer.tick(wm);
