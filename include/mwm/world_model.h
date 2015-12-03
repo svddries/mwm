@@ -38,11 +38,41 @@ public:
 
     const std::vector<Triangle>& triangles() const { return triangles_; }
 
+    // - - - - -
+
+    const std::vector<geo::Vec3>& points() const { return points_; }
+
+    const std::vector<cv::Vec3b>& point_colors() const { return point_colors_; }
+
+    const std::vector<double>& point_probabilities() const { return point_probs_; }
+
+    unsigned int addPoint(const geo::Vec3& p, const cv::Vec3b& color, double prob)
+    {
+        points_.push_back(p);
+        point_colors_.push_back(color);
+        point_probs_.push_back(prob);
+    }
+
+    void setPoint(unsigned int idx, const geo::Vec3& p, const cv::Vec3b& color, double prob)
+    {
+        points_[idx] = p;
+        point_colors_[idx] = color;
+        point_probs_[idx] = prob;
+    }
+
 private:
 
     std::vector<geo::Vec3> vertices_;
 
     std::vector<Triangle> triangles_;
+
+    // - - - - -
+
+    std::vector<geo::Vec3> points_;
+
+    std::vector<cv::Vec3b> point_colors_;
+
+    std::vector<double> point_probs_;
 
 };
 

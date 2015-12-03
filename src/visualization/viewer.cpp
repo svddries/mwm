@@ -1,5 +1,6 @@
 #include "mwm/visualization/viewer.h"
 
+#include "mwm/world_model.h"
 #include "mwm/rendering.h"
 #include "mwm/triangle.h"
 
@@ -169,6 +170,33 @@ void Viewer::render(const WorldModel& wm)
 
     LightingRenderer res(depth_image, canvas_, cam_control_.cam_pose);
     mwm::render::renderDepth(wm, P_, cam_control_.cam_pose, res);
+
+    // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+    geo::Pose3D sensor_pose_inv = cam_control_.cam_pose.inverse();
+
+    for(unsigned int i = 0; i < wm.points().size(); ++i)
+    {
+        const geo::Vec3& p = wm.points()[i];
+        const cv::Vec3b& color = wm.point_colors()[i];
+
+        geo::Vec3 p_sensor = sensor_pose_inv * p;
+        geo::Vec2i p_2d = P_.project3Dto2D(p_sensor);
+        double z = -p_sensor.z;
+
+//        if (z < 0)
+//            continue;
+
+        if (p_2d.x < 0 || p_2d.y < 0 || p_2d.x >= canvas_.cols || p_2d.y >= canvas_.rows)
+            continue;
+
+        float& d = depth_image.at<float>(p_2d.y, p_2d.x);
+        if (d == 0 || z < d)
+        {
+            d = z;
+            canvas_.at<cv::Vec3b>(p_2d.y, p_2d.x) = color;
+        }
+    }
 
 //    unsigned int size = canvas_.rows * canvas_.cols;
 //    for(unsigned int i = 0; i < size; ++i)

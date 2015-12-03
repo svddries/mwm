@@ -40,10 +40,10 @@ void update(mwm::WorldModel& wm, const Image& image)
 
     geo::Pose3D sensor_pose_inv = image.pose.inverse();
 
-    const std::vector<geo::Vec3>& vertices = wm.vertices();
-    for(unsigned int i = 0; i < vertices.size(); ++i)
+    const std::vector<geo::Vec3>& points = wm.points();
+    for(unsigned int i = 0; i < points.size(); ++i)
     {
-        const geo::Vec3& p = vertices[i];
+        const geo::Vec3& p = points[i];
 
         geo::Vec3 p_sensor = sensor_pose_inv * p;
 
@@ -70,8 +70,6 @@ void update(mwm::WorldModel& wm, const Image& image)
 
     // Add missing vertices
 
-    cv::Mat vertex_map_new(height / step, width / step, CV_8UC1, cv::Scalar(0));
-
     for(int y = 0; y < vertex_map.rows - 1; ++y)
     {
         for(int x = 0; x < vertex_map.cols - 1; ++x)
@@ -84,81 +82,34 @@ void update(mwm::WorldModel& wm, const Image& image)
             if (d != d || d <= 0.5 || d > 5)
                 continue;
 
-            int i = vertex_map.at<int>(y, x);
-            if (i >= 0 && std::abs(vertex_map_z.at<float>(y, x) - d) < 0.2)
-                continue;
-
             geo::Vec3 p_sensor = image.P.project2Dto3D(ix, iy) * d;
             geo::Vec3 p = image.pose * p_sensor;
-            vertex_map.at<int>(y, x) = wm.addVertex(p);
-            vertex_map_z.at<float>(y, x) = d;
-            vertex_map_new.at<unsigned char>(y, x) = 1;
-        }
-    }
 
-//    cv::imshow("vertices", vertex_map_z / 10);
-//    cv::imshow("vertices_new", vertex_map_new * 255);
-//    cv::waitKey(3);
+            int i = vertex_map.at<int>(y, x);
+            float d_old = vertex_map_z.at<float>(y, x);
 
+            float f = (float)image.rgb.cols / image.depth.cols;
+            int x_rgb = f * ix;
+            int y_rgb = f * iy;
+            cv::Vec3b color = image.rgb.at<cv::Vec3b>(y_rgb, x_rgb);
 
-    // - - - - - - - - - - - - - - - - - - - - - - - - - -
-
-    float d_thr = 0.2;
-
-    for(int y = 0; y < vertex_map.rows - 1; ++y)
-    {
-        for(int x = 0; x < vertex_map.cols - 1; ++x)
-        {
-//            int ix = (0.5 + step) * x;
-//            int iy = (0.5 + step) * y;
-
-//            float d = depth_image.at<float>(iy, ix);
-//            if (d != d || d == 0)
-//                continue;
-
-
-            int i1 = vertex_map.at<int>(y, x);
-            int i2 = vertex_map.at<int>(y, x + 1);
-            int i3 = vertex_map.at<int>(y + 1, x);
-            int i4 = vertex_map.at<int>(y + 1, x + 1);
-
-            float z1 = vertex_map_z.at<float>(y, x);
-            float z2 = vertex_map_z.at<float>(y, x + 1);
-            float z3 = vertex_map_z.at<float>(y + 1, x);
-            float z4 = vertex_map_z.at<float>(y + 1, x + 1);
-
-            float z1z2 = std::abs(z1 - z2);
-            float z1z3 = std::abs(z1 - z3);
-            float z2z3 = std::abs(z2 - z3);
-            float z2z4 = std::abs(z2 - z4);
-            float z3z4 = std::abs(z3 - z4);
-
-            bool is_new1 = (vertex_map_new.at<unsigned char>(y, x) == 1);
-            bool is_new2 = (vertex_map_new.at<unsigned char>(y, x) == 1);
-            bool is_new3 = (vertex_map_new.at<unsigned char>(y, x) == 1);
-            bool is_new4 = (vertex_map_new.at<unsigned char>(y, x) == 1);
-
-            if (i1 >= 0 && i2 >= 0 && i3 >= 0 && (is_new1 || is_new2 || is_new3)
-                    && z1z2 < d_thr && z1z3 < d_thr && z2z3 < d_thr)
+            if (i >= 0 && std::abs(d_old - d) < 0.2)
             {
-                float f = (float)image.rgb.cols / vertex_map.cols;
-                int x_rgb = f * x;
-                int y_rgb = f * y;
-                cv::Vec3b clr = image.rgb.at<cv::Vec3b>(y_rgb, x_rgb);
-                wm.addTriangle(i2, i1, i3, clr);
+                const geo::Vec3& p_old = wm.points()[i];
+                geo::Vec3 p_new = 0.5 * p + 0.5 * p_old;
+                float d_new = 0.5 * d + 0.5 * d_old;
+                vertex_map_z.at<float>(y, x) = d_new;
+                wm.setPoint(i, p_new, color, 1);
             }
-
-            if (i2 >= 0 && i3 >= 0 && i4 >= 0 && (is_new2 || is_new3 || is_new4)
-                    && z2z4 < d_thr && z3z4 < d_thr && z2z3 < d_thr)
+            else
             {
-                float f = (float)image.rgb.cols / vertex_map.cols;
-                int x_rgb = f * x;
-                int y_rgb = f * y;
-                cv::Vec3b clr = image.rgb.at<cv::Vec3b>(y_rgb, x_rgb);
-                wm.addTriangle(i2, i3, i4, clr);
+                vertex_map.at<int>(y, x) = wm.addPoint(p, color, 1);
+                vertex_map_z.at<float>(y, x) = d;
             }
         }
     }
+
+    std::cout << wm.points().size() << " points" << std::endl;
 }
 
 // ----------------------------------------------------------------------------------------------------
@@ -199,21 +150,21 @@ int main(int argc, char **argv)
         update(wm, image);
         std::cout << "Update took " << timer.getElapsedTimeInMilliSec() << " ms" << std::endl;
 
-        std::cout << "Num vertices: " << wm.vertices().size() << std::endl;
-        std::cout << "Num triangles: " << wm.triangles().size() << std::endl;
+//        std::cout << "Num vertices: " << wm.vertices().size() << std::endl;
+//        std::cout << "Num triangles: " << wm.triangles().size() << std::endl;
 
-        cv::Mat rendered_depth_image(image.depth.rows, image.depth.cols, CV_32FC1, 0.0);
+//        cv::Mat rendered_depth_image(image.depth.rows, image.depth.cols, CV_32FC1, 0.0);
 
-        timer.reset();
-        mwm::render::Result res(rendered_depth_image);
-        mwm::render::renderDepth(wm, image.P, image.pose, res);
-        std::cout << "Rendering took " << timer.getElapsedTimeInMilliSec() << " ms" << std::endl;
+//        timer.reset();
+//        mwm::render::Result res(rendered_depth_image);
+//        mwm::render::renderDepth(wm, image.P, image.pose, res);
+//        std::cout << "Rendering took " << timer.getElapsedTimeInMilliSec() << " ms" << std::endl;
 
         viewer.tick(wm);
 
 
         cv::imshow("depth", image.depth / 10);
-        cv::imshow("rendered_depth_image", rendered_depth_image / 10);
+//        cv::imshow("rendered_depth_image", rendered_depth_image / 10);
         cv::waitKey(3);
     }
 
