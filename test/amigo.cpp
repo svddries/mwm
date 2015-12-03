@@ -91,6 +91,7 @@ void update(mwm::WorldModel& wm, const Image& image)
             geo::Vec3 p_sensor = image.P.project2Dto3D(ix, iy) * d;
             geo::Vec3 p = image.pose * p_sensor;
             vertex_map.at<int>(y, x) = wm.addVertex(p);
+            vertex_map_z.at<float>(y, x) = d;
             vertex_map_new.at<unsigned char>(y, x) = 1;
         }
     }
@@ -101,6 +102,8 @@ void update(mwm::WorldModel& wm, const Image& image)
 
 
     // - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+    float d_thr = 0.2;
 
     for(int y = 0; y < vertex_map.rows - 1; ++y)
     {
@@ -113,17 +116,30 @@ void update(mwm::WorldModel& wm, const Image& image)
 //            if (d != d || d == 0)
 //                continue;
 
+
             int i1 = vertex_map.at<int>(y, x);
             int i2 = vertex_map.at<int>(y, x + 1);
             int i3 = vertex_map.at<int>(y + 1, x);
             int i4 = vertex_map.at<int>(y + 1, x + 1);
+
+            float z1 = vertex_map_z.at<float>(y, x);
+            float z2 = vertex_map_z.at<float>(y, x + 1);
+            float z3 = vertex_map_z.at<float>(y + 1, x);
+            float z4 = vertex_map_z.at<float>(y + 1, x + 1);
+
+            float z1z2 = std::abs(z1 - z2);
+            float z1z3 = std::abs(z1 - z3);
+            float z2z3 = std::abs(z2 - z3);
+            float z2z4 = std::abs(z2 - z4);
+            float z3z4 = std::abs(z3 - z4);
 
             bool is_new1 = (vertex_map_new.at<unsigned char>(y, x) == 1);
             bool is_new2 = (vertex_map_new.at<unsigned char>(y, x) == 1);
             bool is_new3 = (vertex_map_new.at<unsigned char>(y, x) == 1);
             bool is_new4 = (vertex_map_new.at<unsigned char>(y, x) == 1);
 
-            if (i1 >= 0 && i2 >= 0 && i3 >= 0 && (is_new1 || is_new2 || is_new3))
+            if (i1 >= 0 && i2 >= 0 && i3 >= 0 && (is_new1 || is_new2 || is_new3)
+                    && z1z2 < d_thr && z1z3 < d_thr && z2z3 < d_thr)
             {
                 float f = (float)image.rgb.cols / vertex_map.cols;
                 int x_rgb = f * x;
@@ -132,7 +148,8 @@ void update(mwm::WorldModel& wm, const Image& image)
                 wm.addTriangle(i2, i1, i3, clr);
             }
 
-            if (i2 >= 0 && i3 >= 0 && i4 >= 0 && (is_new2 || is_new3 || is_new4))
+            if (i2 >= 0 && i3 >= 0 && i4 >= 0 && (is_new2 || is_new3 || is_new4)
+                    && z2z4 < d_thr && z3z4 < d_thr && z2z3 < d_thr)
             {
                 float f = (float)image.rgb.cols / vertex_map.cols;
                 int x_rgb = f * x;
