@@ -196,7 +196,7 @@ void renderDepth(const WorldModel& wm, const ProjectionMatrix& P, const geo::Pos
         const geo::Vec3& p2_3d = vertices_t[t.i2];
         const geo::Vec3& p3_3d = vertices_t[t.i3];
 
-        res.triangleHook(p1_3d, p2_3d, p3_3d);
+        res.triangleHook(t, p1_3d, p2_3d, p3_3d);
 
         int n_verts_in = 0;
         bool v1_in = false;

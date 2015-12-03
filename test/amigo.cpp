@@ -16,10 +16,20 @@
 
 // ----------------------------------------------------------------------------------------------------
 
-void update(mwm::WorldModel& wm, const cv::Mat& depth_image, const geo::Pose3D& sensor_pose, const mwm::ProjectionMatrix& P)
+struct Image
 {
-    int width = depth_image.cols;
-    int height = depth_image.rows;
+    cv::Mat depth;
+    cv::Mat rgb;
+    mwm::ProjectionMatrix P;
+    geo::Pose3D pose;
+};
+
+// ----------------------------------------------------------------------------------------------------
+
+void update(mwm::WorldModel& wm, const Image& image)
+{
+    int width = image.depth.cols;
+    int height = image.depth.rows;
 
     int step = 10;
 
@@ -28,7 +38,7 @@ void update(mwm::WorldModel& wm, const cv::Mat& depth_image, const geo::Pose3D& 
     cv::Mat vertex_map(height / step, width / step, CV_32SC1, cv::Scalar(-1));
     cv::Mat vertex_map_z(height / step, width / step, CV_32FC1, 0.0);
 
-    geo::Pose3D sensor_pose_inv = sensor_pose.inverse();
+    geo::Pose3D sensor_pose_inv = image.pose.inverse();
 
     const std::vector<geo::Vec3>& vertices = wm.vertices();
     for(unsigned int i = 0; i < vertices.size(); ++i)
@@ -41,7 +51,7 @@ void update(mwm::WorldModel& wm, const cv::Mat& depth_image, const geo::Pose3D& 
         if (vz < 0) // Filter vertices that are behind the camera
             continue;
 
-        geo::Vec2i p_2d = P.project3Dto2D(p_sensor);
+        geo::Vec2i p_2d = image.P.project3Dto2D(p_sensor);
         if (p_2d.x < 0 || p_2d.y < 0 || p_2d.x >= width || p_2d.y >= height)
             continue;
 
@@ -69,7 +79,8 @@ void update(mwm::WorldModel& wm, const cv::Mat& depth_image, const geo::Pose3D& 
             int ix = step * (x + 0.5);
             int iy = step * (y + 0.5);
 
-            float d = depth_image.at<float>(iy, ix);
+            float d = image.depth.at<float>(iy, ix);
+
             if (d != d || d <= 0.5 || d > 5)
                 continue;
 
@@ -77,8 +88,8 @@ void update(mwm::WorldModel& wm, const cv::Mat& depth_image, const geo::Pose3D& 
             if (i >= 0 && std::abs(vertex_map_z.at<float>(y, x) - d) < 0.2)
                 continue;
 
-            geo::Vec3 p_sensor = P.project2Dto3D(ix, iy) * d;
-            geo::Vec3 p = sensor_pose * p_sensor;
+            geo::Vec3 p_sensor = image.P.project2Dto3D(ix, iy) * d;
+            geo::Vec3 p = image.pose * p_sensor;
             vertex_map.at<int>(y, x) = wm.addVertex(p);
             vertex_map_new.at<unsigned char>(y, x) = 1;
         }
@@ -113,10 +124,22 @@ void update(mwm::WorldModel& wm, const cv::Mat& depth_image, const geo::Pose3D& 
             bool is_new4 = (vertex_map_new.at<unsigned char>(y, x) == 1);
 
             if (i1 >= 0 && i2 >= 0 && i3 >= 0 && (is_new1 || is_new2 || is_new3))
-                wm.addTriangle(i2, i1, i3);
+            {
+                float f = (float)image.rgb.cols / vertex_map.cols;
+                int x_rgb = f * x;
+                int y_rgb = f * y;
+                cv::Vec3b clr = image.rgb.at<cv::Vec3b>(y_rgb, x_rgb);
+                wm.addTriangle(i2, i1, i3, clr);
+            }
 
             if (i2 >= 0 && i3 >= 0 && i4 >= 0 && (is_new2 || is_new3 || is_new4))
-                wm.addTriangle(i2, i3, i4);
+            {
+                float f = (float)image.rgb.cols / vertex_map.cols;
+                int x_rgb = f * x;
+                int y_rgb = f * y;
+                cv::Vec3b clr = image.rgb.at<cv::Vec3b>(y_rgb, x_rgb);
+                wm.addTriangle(i2, i3, i4, clr);
+            }
         }
     }
 }
@@ -137,41 +160,42 @@ int main(int argc, char **argv)
     while(ros::ok())
     {
         geo::Pose3D sensor_pose;
-        rgbd::ImageConstPtr image;
+        rgbd::ImageConstPtr rgbd_image;
 
-        if (!image_buffer.waitForRecentImage("/map", image, sensor_pose, 1.0))
+        if (!image_buffer.waitForRecentImage("/map", rgbd_image, sensor_pose, 1.0))
             continue;
 
-        const cv::Mat& depth_image = image->getDepthImage();
+        Image image;
+        image.pose = sensor_pose;
+        image.depth = rgbd_image->getDepthImage();
+        image.rgb = rgbd_image->getRGBImage();
 
-        rgbd::View view(*image, depth_image.cols);
+        rgbd::View view(*rgbd_image, image.depth.cols);
         const geo::DepthCamera& cam_model = view.getRasterizer();
-
-        mwm::ProjectionMatrix P;
-        P.setFocalLengths(cam_model.getFocalLengthX(), cam_model.getFocalLengthY());
-        P.setOpticalCenter(cam_model.getOpticalCenterX(), cam_model.getOpticalCenterY());
-        P.setOpticalTranslation(cam_model.getOpticalTranslationX(), cam_model.getOpticalTranslationY());
+        image.P.setFocalLengths(cam_model.getFocalLengthX(), cam_model.getFocalLengthY());
+        image.P.setOpticalCenter(cam_model.getOpticalCenterX(), cam_model.getOpticalCenterY());
+        image.P.setOpticalTranslation(cam_model.getOpticalTranslationX(), cam_model.getOpticalTranslationY());
 
         std::cout << "-----------------" << std::endl;
 
         Timer timer;
-        update(wm, depth_image, sensor_pose, P);
+        update(wm, image);
         std::cout << "Update took " << timer.getElapsedTimeInMilliSec() << " ms" << std::endl;
 
         std::cout << "Num vertices: " << wm.vertices().size() << std::endl;
         std::cout << "Num triangles: " << wm.triangles().size() << std::endl;
 
-        cv::Mat rendered_depth_image(depth_image.rows, depth_image.cols, CV_32FC1, 0.0);
+        cv::Mat rendered_depth_image(image.depth.rows, image.depth.cols, CV_32FC1, 0.0);
 
         timer.reset();
         mwm::render::Result res(rendered_depth_image);
-        mwm::render::renderDepth(wm, P, sensor_pose, res);
+        mwm::render::renderDepth(wm, image.P, image.pose, res);
         std::cout << "Rendering took " << timer.getElapsedTimeInMilliSec() << " ms" << std::endl;
 
         viewer.tick(wm);
 
 
-        cv::imshow("depth", depth_image / 10);
+        cv::imshow("depth", image.depth / 10);
         cv::imshow("rendered_depth_image", rendered_depth_image / 10);
         cv::waitKey(3);
     }

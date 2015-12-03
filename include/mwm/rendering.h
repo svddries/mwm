@@ -9,6 +9,7 @@ namespace mwm
 
 class WorldModel;
 class ProjectionMatrix;
+class Triangle;
 
 namespace render
 {
@@ -18,7 +19,7 @@ struct Result
 
     Result(cv::Mat& z_buffer_) : z_buffer(z_buffer_) {}
 
-    virtual void triangleHook(const geo::Vec3& v1, const geo::Vec3& v2, const geo::Vec3& v3) { }
+    virtual void triangleHook(const Triangle& t, const geo::Vec3& v1, const geo::Vec3& v2, const geo::Vec3& v3) { }
 
     virtual void renderPixel(int x, int y, float depth)
     {

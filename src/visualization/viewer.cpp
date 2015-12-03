@@ -1,6 +1,7 @@
 #include "mwm/visualization/viewer.h"
 
 #include "mwm/rendering.h"
+#include "mwm/triangle.h"
 
 #include <opencv2/highgui/highgui.hpp>
 
@@ -19,12 +20,13 @@ public:
     LightingRenderer(cv::Mat& z_buffer, cv::Mat& canvas, const geo::Pose3D& sensor_pose)
         : render::Result(z_buffer), canvas_(canvas), sensor_pose_(sensor_pose) {}
 
-    void triangleHook(const geo::Vec3& p1, const geo::Vec3& p2, const geo::Vec3& p3)
+    void triangleHook(const Triangle& t, const geo::Vec3& p1, const geo::Vec3& p2, const geo::Vec3& p3)
     {
         geo::Vec3 n = ((p3 - p1).cross(p2 - p1)).normalized();
         n = sensor_pose_.R * n;
         double v = (1 + n.dot(geo::Vec3(0, 0.3, -1).normalized())) / 2;
-        color_ = v * cv::Vec3b(255, 255, 255);
+//        color_ = v * t.color;
+        color_ = t.color;
     }
 
     void renderPixel(int x, int y, float depth)
