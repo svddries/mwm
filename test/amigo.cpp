@@ -40,29 +40,41 @@ void update(mwm::WorldModel& wm, const Image& image)
 
     geo::Pose3D sensor_pose_inv = image.pose.inverse();
 
+    geo::Vec3 Rx = sensor_pose_inv.R.getRow(0);
+    geo::Vec3 Ry = sensor_pose_inv.R.getRow(1);
+    geo::Vec3 Rz = sensor_pose_inv.R.getRow(2);
+
     const std::vector<geo::Vec3>& points = wm.points();
     for(unsigned int i = 0; i < points.size(); ++i)
     {
-        const geo::Vec3& p = points[i];
+        const geo::Vec3& p_world = points[i];
 
-        geo::Vec3 p_sensor = sensor_pose_inv * p;
+        geo::Vec3 p_sensor;
+        p_sensor.z = Rz.dot(p_world) + sensor_pose_inv.t.z;
 
         float vz = -p_sensor.z;
         if (vz < 0) // Filter vertices that are behind the camera
             continue;
 
-        geo::Vec2i p_2d = image.P.project3Dto2D(p_sensor);
-        if (p_2d.x < 0 || p_2d.y < 0 || p_2d.x >= width || p_2d.y >= height)
+        p_sensor.x = Rx.dot(p_world) + sensor_pose_inv.t.x;
+        p_sensor.y = Ry.dot(p_world) + sensor_pose_inv.t.y;
+
+        int p_2d_x = image.P.project3Dto2DX(p_sensor);
+        if (p_2d_x < 0 || p_2d_x >= width)
             continue;
 
-        int vx = p_2d.x / step;
-        int vy = p_2d.y / step;
+        int p_2d_y = image.P.project3Dto2DY(p_sensor);
+        if (p_2d_y < 0 || p_2d_y >= height)
+            continue;
+
+        int vx = p_2d_x / step;
+        int vy = p_2d_y / step;
 
         int vi = vertex_map.at<int>(vy, vx);
         if (vi <= 0 || vertex_map_z.at<float>(vy, vx) < vz)
         {
-            vertex_map.at<int>(p_2d.y / step, p_2d.x / step) = i;
-            vertex_map_z.at<float>(p_2d.y / step, p_2d.x / step) = -p_sensor.z;
+            vertex_map.at<int>(vy, vx) = i;
+            vertex_map_z.at<float>(vy, vx) = -p_sensor.z;
         }
     }
 
@@ -108,8 +120,6 @@ void update(mwm::WorldModel& wm, const Image& image)
             }
         }
     }
-
-    std::cout << wm.points().size() << " points" << std::endl;
 }
 
 // ----------------------------------------------------------------------------------------------------
@@ -149,6 +159,7 @@ int main(int argc, char **argv)
         Timer timer;
         update(wm, image);
         std::cout << "Update took " << timer.getElapsedTimeInMilliSec() << " ms" << std::endl;
+        std::cout << wm.points().size() << " points" << std::endl;
 
 //        std::cout << "Num vertices: " << wm.vertices().size() << std::endl;
 //        std::cout << "Num triangles: " << wm.triangles().size() << std::endl;

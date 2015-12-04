@@ -15,9 +15,19 @@ public:
 
     ~ProjectionMatrix() {}
 
+    inline int project3Dto2DX(const geo::Vec3& p) const
+    {
+        return (fx_ * p.x + tx_) / -p.z + cx_;
+    }
+
+    inline int project3Dto2DY(const geo::Vec3& p) const
+    {
+        return (fy_ * -p.y + ty_) / -p.z + cy_;
+    }
+
     inline geo::Vec2i project3Dto2D(const geo::Vec3& p) const
     {
-        return geo::Vec2i((fx_ * p.x + tx_) / -p.z + cx_, (fy_ * -p.y + ty_) / -p.z + cy_);
+        return geo::Vec2i(project3Dto2DX(p), project3Dto2DY(p));
     }
 
     inline double project2Dto3DX(int x) const
