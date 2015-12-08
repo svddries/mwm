@@ -144,16 +144,16 @@ void Viewer::render(const WorldModel& wm)
 
     if (!cam_initialized_)
     {
-        if (!wm.points().empty())
+        if (!wm.points().empty() || !wm.vertices().empty())
         {
             geo::Vec3 p_total(0, 0, 0);
             for(unsigned int i = 0; i < wm.points().size(); ++i)
-            {
-                const geo::Vec3& p = wm.points()[i];
-                p_total += p;
-            }
+                p_total += wm.points()[i];
 
-            cam_control_.cam_lookat = p_total / wm.points().size();
+            for(unsigned int i = 0; i < wm.vertices().size(); ++i)
+                p_total += wm.vertices()[i];
+
+            cam_control_.cam_lookat = p_total / (wm.points().size() + wm.vertices().size());
             cam_initialized_ = true;
         }
         else
