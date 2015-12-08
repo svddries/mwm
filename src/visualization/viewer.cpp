@@ -101,7 +101,7 @@ void CallBackFunc(int event, int x, int y, int flags, void* userdata)
 
 // ----------------------------------------------------------------------------------------------------
 
-Viewer::Viewer() {}
+Viewer::Viewer() : cam_initialized_(false) {}
 
 // ----------------------------------------------------------------------------------------------------
 
@@ -134,19 +134,38 @@ void Viewer::initialize(const std::string& name, int width, int height)
     P_.setFocalLengths(0.87 * width, 0.87 * width);
     P_.setOpticalCenter(width / 2 + 0.5, height / 2 + 0.5);
     P_.setOpticalTranslation(0, 0);
-
-    // Camera control
-    cam_control_.cam_lookat = geo::Vec3(0, 0, 0);
-    cam_control_.cam_dist = 5;
-    cam_control_.cam_pitch = 0.7;
-    cam_control_.cam_yaw = 3.1415;
-
 }
 
 // ----------------------------------------------------------------------------------------------------
 
 void Viewer::render(const WorldModel& wm)
 {
+    // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
+    if (!cam_initialized_)
+    {
+        if (!wm.points().empty())
+        {
+            geo::Vec3 p_total(0, 0, 0);
+            for(unsigned int i = 0; i < wm.points().size(); ++i)
+            {
+                const geo::Vec3& p = wm.points()[i];
+                p_total += p;
+            }
+
+            cam_control_.cam_lookat = p_total / wm.points().size();
+            cam_initialized_ = true;
+        }
+        else
+        {
+            cam_control_.cam_lookat = geo::Vec3(0, 0, 0);
+        }
+
+        cam_control_.cam_dist = 5;
+        cam_control_.cam_pitch = 0.7;
+        cam_control_.cam_yaw = 3.1415;
+    }
+
     // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     // Calculate camera pose
 
@@ -195,6 +214,7 @@ void Viewer::render(const WorldModel& wm)
         {
             d = z;
             canvas_.at<cv::Vec3b>(p_2d.y, p_2d.x) = color;
+//            cv::circle(canvas_, cv::Point(p_2d.x, p_2d.y), 3, cv::Scalar(color[0], color[1], color[2]), CV_FILLED);
         }
     }
 

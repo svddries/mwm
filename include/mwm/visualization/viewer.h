@@ -46,6 +46,8 @@ private:
 
     // Camera control
 
+    bool cam_initialized_;
+
     CamControlData cam_control_;
 
 
