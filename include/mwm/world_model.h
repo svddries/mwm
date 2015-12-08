@@ -53,6 +53,11 @@ public:
         point_probs_.push_back(prob);
     }
 
+    void setPoint(unsigned int idx, const geo::Vec3& p)
+    {
+        points_[idx] = p;
+    }
+
     void setPoint(unsigned int idx, const geo::Vec3& p, const cv::Vec3b& color, double prob)
     {
         points_[idx] = p;

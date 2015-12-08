@@ -31,12 +31,9 @@ void update(mwm::WorldModel& wm, const Image& image)
     int width = image.depth.cols;
     int height = image.depth.rows;
 
-    int step = 10;
+//    cv::Mat depth = image.depth.clone();
 
     // - - - - - - - - - - - - - - - - - - - - - - - - - -
-
-    cv::Mat vertex_map(height / step, width / step, CV_32SC1, cv::Scalar(-1));
-    cv::Mat vertex_map_z(height / step, width / step, CV_32FC1, 0.0);
 
     geo::Pose3D sensor_pose_inv = image.pose.inverse();
 
@@ -44,8 +41,12 @@ void update(mwm::WorldModel& wm, const Image& image)
     geo::Vec3 Ry = sensor_pose_inv.R.getRow(1);
     geo::Vec3 Rz = sensor_pose_inv.R.getRow(2);
 
-    // TODO: something wrong: still points added when they should not
-    // (Try in sim: start wm, drive a bit forward)
+    int step = 10;
+    double depth_res = 0.1;
+    double z_min = 0.5;
+    double z_max = 5;
+
+    cv::Mat vertex_map_z_min(image.depth.rows / step, image.depth.cols / step, CV_32FC1, 0.0);
 
     const std::vector<geo::Vec3>& points = wm.points();
     for(unsigned int i = 0; i < points.size(); ++i)
@@ -56,7 +57,7 @@ void update(mwm::WorldModel& wm, const Image& image)
         p_sensor.z = Rz.dot(p_world) + sensor_pose_inv.t.z;
 
         float vz = -p_sensor.z;
-        if (vz < 0) // Filter vertices that are behind the camera
+        if (vz < z_min || vz > z_max) // Filter vertices that are behind the camera
             continue;
 
         p_sensor.x = Rx.dot(p_world) + sensor_pose_inv.t.x;
@@ -70,57 +71,68 @@ void update(mwm::WorldModel& wm, const Image& image)
         if (p_2d_y < 0 || p_2d_y >= height)
             continue;
 
-        int vx = p_2d_x / step;
-        int vy = p_2d_y / step;
-
-        int vi = vertex_map.at<int>(vy, vx);
-        if (vi <= 0 || vertex_map_z.at<float>(vy, vx) < vz)
+        float z = image.depth.at<float>(p_2d_y, p_2d_x);
+        if (z == z && z > 0)
         {
-            vertex_map.at<int>(vy, vx) = i;
-            vertex_map_z.at<float>(vy, vx) = -p_sensor.z;
+            if (vz < z - 0.1)
+            {
+                // Remove vertex
+            }
+            else
+            {
+                if (vz < z + 0.1)
+                {
+                    // Update vertex
+//                    float vz_new = vz;//(0.1 * z + 0.9 * vz);
+//                    geo::Vec3 p_new = image.P.project2Dto3D(p_2d_x, p_2d_y) * vz_new;
+//                    wm.setPoint(i, image.pose * p_new);
+                }
+                // else vertex is occluded
+
+                int vmx = p_2d_x / step;
+                int vmy = p_2d_y / step;
+
+                float& vz_old = vertex_map_z_min.at<float>(vmy, vmx);
+                if (vz_old == 0 || vz < vz_old)
+                    vz_old = vz;
+            }
         }
     }
+
+//    cv::imshow("vertex_map_z_min", vertex_map_z_min / 10);
+//    cv::waitKey(3);
 
     // - - - - - - - - - - - - - - - - - - - - - - - - - -
 
     // Add missing vertices
 
-    for(int y = 0; y < vertex_map.rows - 1; ++y)
+    float f = (float)image.rgb.cols / image.depth.cols;
+
+    for(int y = step / 2; y < image.depth.rows; y += step)
     {
-        for(int x = 0; x < vertex_map.cols - 1; ++x)
+        for(int x = step / 2; x < image.depth.cols; x += step)
         {
-            int ix = step * (x + 0.5);
-            int iy = step * (y + 0.5);
-
-            float d = image.depth.at<float>(iy, ix);
-
-            if (d != d || d <= 0.5 || d > 5)
+            float z = image.depth.at<float>(y, x);
+            if (z < z_min || z > z_max || z != z)
                 continue;
 
-            geo::Vec3 p_sensor = image.P.project2Dto3D(ix, iy) * d;
+            int vmx = x / step;
+            int vmy = y / step;
+            float vmz = vertex_map_z_min.at<float>(vmy, vmx);
+
+//            std::cout << vmx << ", " << vmy << ": " << vmz << std::endl;
+
+            if (vmz > 0 && z > vmz - 0.1)
+                continue;
+
+            geo::Vec3 p_sensor = image.P.project2Dto3D(x, y) * z;
             geo::Vec3 p = image.pose * p_sensor;
 
-            int i = vertex_map.at<int>(y, x);
-            float d_old = vertex_map_z.at<float>(y, x);
-
-            float f = (float)image.rgb.cols / image.depth.cols;
-            int x_rgb = f * ix;
-            int y_rgb = f * iy;
+            int x_rgb = f * x;
+            int y_rgb = f * y;
             cv::Vec3b color = image.rgb.at<cv::Vec3b>(y_rgb, x_rgb);
 
-            if (i >= 0 && std::abs(d_old - d) < 0.2)
-            {
-                const geo::Vec3& p_old = wm.points()[i];
-                geo::Vec3 p_new = 0.5 * p + 0.5 * p_old;
-                float d_new = 0.5 * d + 0.5 * d_old;
-                vertex_map_z.at<float>(y, x) = d_new;
-                wm.setPoint(i, p_new, color, 1);
-            }
-            else
-            {
-                vertex_map.at<int>(y, x) = wm.addPoint(p, color, 1);
-                vertex_map_z.at<float>(y, x) = d;
-            }
+            wm.addPoint(p, color, 1);
         }
     }
 }
@@ -143,7 +155,7 @@ int main(int argc, char **argv)
         geo::Pose3D sensor_pose;
         rgbd::ImageConstPtr rgbd_image;
 
-        if (!image_buffer.waitForRecentImage("/map", rgbd_image, sensor_pose, 1.0))
+        if (!image_buffer.waitForRecentImage("/amigo/odom", rgbd_image, sensor_pose, 1.0))
             continue;
 
         Image image;
